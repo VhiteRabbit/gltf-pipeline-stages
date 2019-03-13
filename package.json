@@ -1,0 +1,33 @@
+{
+  "name": "gltf-pipeline-stages",
+  "version": "0.1.0",
+  "description": "Vhite Rabbit's custom stages for the gltf-pipeline tools.",
+  "license": "MIT",
+  "contributors": [
+    {
+      "name": "Jonathan Hale, Vhite Rabbit",
+      "url": "https://github.com/vhiterabbit/gltf-pipeline-stages/"
+    }
+  ],
+  "keywords": [
+    "glTF",
+    "WebGL"
+  ],
+  "homepage": "https://github.com/vhiterabbit/gltf-pipeline-stages",
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:vhiterabbit/gltf-pipeline-stages.git"
+  },
+  "bugs": {
+    "url": "https://github.com/vhiterabbit/gltf-pipeline-stages/issues"
+  },
+  "main": "index.js",
+  "engines": {
+    "node": ">=6.0.0"
+  },
+  "dependencies": {
+  },
+  "devDependencies": {},
+  "scripts": {},
+  "bin": {}
+}
