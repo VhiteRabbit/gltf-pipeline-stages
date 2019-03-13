@@ -1,9 +1,5 @@
 # Vhite Rabbit's Custom glTF Pipeline Stages
 
-<p align="center">
-<a href="https://www.khronos.org/gltf"><img src="doc/gltf.png" onerror="this.src='gltf.png'"/></a>
-</p>
-
 Custom pipeline stages for [glTF pipeline](https://github.com/AnalyticalGraphicsInc),
 content pipeline tools for optimizing [glTF](https://www.khronos.org/gltf/) assets.
 
@@ -19,7 +15,7 @@ in the root of this repository to install its dependencies.
 Then import the stage you want to use and add it to the `customStages`
 option for `processGlb`, `processGltf` or `glbToGltf`:
 
-```
+```js
 const fsExtra = require('fs-extra');
 const processGltf = require('gltf-pipeline').processGltf;
 
