@@ -26,6 +26,10 @@
     "node": ">=6.0.0"
   },
   "dependencies": {
+    "fs-extra": "^7.0.1",
+    "gl-matrix": "^3.0.0",
+    "gltf-pipeline": "^2.1.1",
+    "pngjs": "^3.3.3"
   },
   "devDependencies": {},
   "scripts": {},
