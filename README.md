@@ -20,14 +20,20 @@ Then import the stage you want to use and add it to the `customStages`
 option for `processGlb`, `processGltf` or `glbToGltf`:
 
 ```
+const fsExtra = require('fs-extra');
+const processGltf = require('gltf-pipeline').processGltf;
+
+/* Import our custom pipeline stage */
 const myStage = require('myStage');
-fsExtra.readFile('input.glb')
-    .then(glb => {
-        return processGlb(glb, {customStages: myStage});
+
+fsExtra.readJson('input.gltf')
+    .then(gltf => {
+        return processGltf(gltf, {customStages: myStage});
     })
     .then(result => {
-        require('fs-extra').writeJsonSync('output.glb', result.glb)
-    });
+        fsExtra.writeJsonSync('output.gltf', result.gltf)
+    })
+    .catch(console.error);
 ```
 
 ## Stages
