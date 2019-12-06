@@ -22,14 +22,14 @@ PALETTE = []
  * @private
  */
 function addToPalette(color) {
-    const index = PALETTE.find(c => {
+    const index = PALETTE.findIndex(c => {
         for(var i = 0; i < 4; ++i) {
             if(color[i] != c[i]) return false;
         }
         return true;
     });
 
-    if(index == undefined) {
+    if(index < 0) {
         /* Color not in palette yet */
         PALETTE.push(color);
         return PALETTE.length - 1;
@@ -59,7 +59,7 @@ function paletteToImage() {
         }
     });
 
-    console.log(`Palette (1 x ${png.width}) size is ${png.data.length} bytes with ${PALETTE.length} colors`);
+    console.log(`Palette (1 x ${png.width}) size is ${(png.data || []).length} bytes with ${PALETTE.length} colors`);
     var data = PNG.sync.write(png, {});
     return data;
 }
@@ -190,6 +190,10 @@ function removeUnusedNodes(gltf) {
  */
 function getWorldTransform(gltf, nodeId) {
     var node = gltf.nodes[nodeId];
+    if(node == undefined) {
+        console.log(`${nodeId} was not found, using identity transform`);
+        return mat4.create();
+    }
     var mat = node.matrix || mat4.create();
     if(node.translation) mat4.translate(mat, mat, node.translation);
     if(node.rotation) {
@@ -213,10 +217,10 @@ function getWorldTransform(gltf, nodeId) {
  * @param {Object} Input gltf.
  * @return {Object} Converted gltf.
  */
-function toPaletteMesh(gltf) {
+function toPaletteMesh(gltf, options) {
     var buffers = [];
 
-    gltf.nodes.forEach(function(node, i) {
+    gltf.nodes.forEach(function(node, nodeId) {
         if(node.mesh != undefined) {
             let mesh = gltf.meshes[node['mesh']];
             let mergedPrimitives = [];
@@ -232,7 +236,7 @@ function toPaletteMesh(gltf) {
                     .pbrMetallicRoughness
                     .baseColorFactor);
 
-                var mat = getWorldTransform(gltf, i);
+                var mat = getWorldTransform(gltf, nodeId);
 
                 buffers.push({
                     indices: primitive.indices,
