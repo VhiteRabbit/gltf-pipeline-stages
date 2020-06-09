@@ -16,10 +16,11 @@ const vec3 = require('gl-matrix').vec3;
 
 module.exports = textureAtlas;
 
-async function packImages(name, images, options) {
+async function packImages(gltf, name, images, options) {
     let rects = [];
     let atlasImages = [];
-    for(const buffer of images) {
+    for(const imgIndex of images) {
+        const buffer = gltf.images[imgIndex].extras._pipeline.source;
         const image = sharp(buffer);
         const meta = await image.metadata();
         rects.push(new rp.rect_xywhf(0, 0, meta.width, meta.height));
@@ -36,6 +37,12 @@ async function packImages(name, images, options) {
     let bins = [];
     if(!rp.pack(rects, 4096, bins)) {
         console.error("Insufficient atlas size.");
+        return;
+    }
+
+    if(images.length != bins[0].rects.length) {
+        console.error("ERROR: Insufficient atlas size.");
+        return;
     }
 
     let packedRects = [];
@@ -57,22 +64,27 @@ async function packImages(name, images, options) {
             x: rect.x/size.w, y: rect.y/size.h,
             w: rect.w/size.w, h: rect.h/size.h});
 
+        if(rect.flipped) {
+            // TODO: This aparently does happen!
+        }
+
         atlasImages[index].left = rect.x;
         atlasImages[index].top = rect.y;
         ++index;
     }
 
-    const atlasFilename = './' + name + '.webp';
     let img = await atlasImage
         .composite(atlasImages);
 
-    if(options.format == 'jpeg') {
+    if(options.format == 'png') {
+        img = await img.png({quality: 90}).toBuffer();
+    } else if(options.format == 'jpeg') {
         img = await img.jpeg({quality: 90}).toBuffer();
     } else if(options.format == 'webp') {
         img = await img.webp({quality: 90}).toBuffer();
     }
 
-    return {packedRects: packedRects, image: img};
+    return {packedRects: packedRects, image: img, size: size};
 }
 
 /** Get next power of two larger than given number */
@@ -90,10 +102,10 @@ function addMinMax(gltf, accessorId) {
 
 /** Find first node which has given node as a child */
 function findParentNode(gltf, node) {
-    return gltf.nodes.find(n => (n.children || []).includes(node));
+    return gltf.nodes.findIndex(n => (n.children || []).includes(node));
 }
 
-function nodeIsEmpty(node) {
+function nodeIsEmpty(gltf, node) {
     /* If self is empty and has only empty children, node is empty */
     if(!(node.mesh || node.camera || node.extensions)) {
         return !(node.children
@@ -171,7 +183,7 @@ function removeUnusedNodes(gltf) {
 
     var nodesToRemove = [];
     gltf.nodes.forEach((n, i) => {
-        if(nodeIsEmpty(n)) nodesToRemove.push(i);
+        if(nodeIsEmpty(gltf, n)) nodesToRemove.push(i);
     });
     nodesToRemove.sort((a, b) => b - a).forEach(n => {
         delete gltf.nodes[n];
@@ -220,7 +232,7 @@ function getWorldTransform(gltf, nodeId) {
     if(node.scale) mat4.scale(mat, mat, node.scale);
 
     var parent = findParentNode(gltf, nodeId);
-    if(parent) {
+    if(parent >= 0) {
         mat4.multiply(mat, getWorldTransform(gltf, parent), mat);
     }
 
@@ -234,11 +246,15 @@ function getWorldTransform(gltf, nodeId) {
  * @return {Object} Converted gltf.
  */
 async function textureAtlas(gltf, options) {
+    try {
     if(options.atlases.length == 0) {
         console.error("No atlases specified");
         return;
     }
-    IMAGE_FORMATS = ['webp', 'jpeg'];
+    if(options.removeAnimations) {
+        delete gltf.animations;
+    }
+    IMAGE_FORMATS = ['webp', 'jpeg', 'png'];
     if(!('format' in options)) {
         options.format = 'webp';
         console.log("No format specified, using default:", options.format);
@@ -285,8 +301,12 @@ async function textureAtlas(gltf, options) {
                 if(!('baseColorTexture' in mat.pbrMetallicRoughness)) {
                     return;
                 }
-                const image = gltf.images[gltf.textures[mat.pbrMetallicRoughness.baseColorTexture.index].source].extras._pipeline.source;
-                atlases[atlasIndex].images.push(image);
+                const image = gltf.textures[mat.pbrMetallicRoughness.baseColorTexture.index].source;
+                let imageIndex = atlases[atlasIndex].images.indexOf(image);
+                if(imageIndex < 0) {
+                    imageIndex = atlases[atlasIndex].images.length;
+                    atlases[atlasIndex].images.push(image);
+                }
 
                 var transform = getWorldTransform(gltf, nodeId);
 
@@ -297,7 +317,8 @@ async function textureAtlas(gltf, options) {
                     positions: primitive.attributes.POSITION,
                     texCoords: primitive.attributes.TEXCOORD_0,
                     matrix: transform,
-                    index: bufferIndex
+                    index: bufferIndex,
+                    imageIndex: imageIndex
                 });
 
                 mergedPrimitives.push(primitiveId);
@@ -319,8 +340,11 @@ async function textureAtlas(gltf, options) {
         }
     });
 
+    console.log("Merging batches...");
+
     /* Generate texture coordinates */
     for(let atlas of atlases) {
+        console.log(" -", atlas.name);
         /* Counting for statistics */
         var totalIndicesCount = 0;
         var totalCount = 0;
@@ -329,12 +353,21 @@ async function textureAtlas(gltf, options) {
             totalCount += gltf.accessors[b.positions].count;
         });
 
-        Object.assign(atlas, await packImages(atlas.name, atlas.images, options))
+        if(atlas.images.length == 0) {
+            console.warn("   ! Atlas without images, skipping", atlas.name);
+            continue;
+        }
 
+        console.log("   > packing", atlas.images.length, "images");
+        Object.assign(atlas, await packImages(gltf, atlas.name, atlas.images, options))
+        console.log("   > atlas size:", atlas.size);
+
+        console.log("   > joining meshes");
         /* Destination for the data */
         atlas.byteBuffers = new Array(4);
 
         /* Indices */
+        console.log("   > preparing indices");
         var indexOffset = 0; // For merging the meshes
         atlas.byteBuffers[0] = atlas.buffers.map(b => {
             var arr = readAccessorPacked(gltf, gltf.accessors[b.indices])
@@ -344,6 +377,7 @@ async function textureAtlas(gltf, options) {
         });
 
         /* Positions */
+        console.log("   > preparing positions");
         atlas.byteBuffers[1] = atlas.buffers.map(b => {
             var accessor = gltf.accessors[b.positions];
             var arr = readAccessorPacked(gltf, accessor);
@@ -358,6 +392,7 @@ async function textureAtlas(gltf, options) {
         });
 
         /* Normals */
+        console.log("   > preparing normals");
         atlas.byteBuffers[2] = atlas.buffers.map(b => {
             var accessor = gltf.accessors[b.normals];
             var arr = readAccessorPacked(gltf, accessor);
@@ -365,10 +400,12 @@ async function textureAtlas(gltf, options) {
         });
 
         /* Texture coordinates */
+        console.log("   > preparing uvs");
         atlas.byteBuffers[3] = atlas.buffers.map(b => {
-            var rect = atlas.packedRects[b.index];
+            var rect = atlas.packedRects[b.imageIndex];
             var accessor = gltf.accessors[b.texCoords];
             var arr = readAccessorPacked(gltf, accessor);
+            console.log(rect);
             for(var i = 0; i < arr.length; i += 2) {
                 arr[i+0] = arr[i+0]*rect.w + rect.x;
                 arr[i+1] = arr[i+1]*rect.h + rect.y;
@@ -377,6 +414,7 @@ async function textureAtlas(gltf, options) {
         });
 
         /* Append batch to scene */
+        console.log("   > appending to scene");
         gltf.scenes[gltf.defaultScene || 0].nodes.push(gltf.nodes.length);
         gltf.nodes.push({
             mesh: gltf.meshes.length,
@@ -412,7 +450,7 @@ async function textureAtlas(gltf, options) {
         });
         gltf.textures.push({source: gltf.images.length, sampler: gltf.samplers.length});
         gltf.samplers.push({minFilter: 9728, magFilter: 9728});
-        gltf.images.push({extras: {_pipeline: {source: atlas.image}}});
+        gltf.images.push({name: atlas.name, extras: {_pipeline: {source: atlas.image}}});
 
         /* Merge buffers and add to gltf scene */
         var NAMES = ['indices', 'positions', 'normals', 'texcoords'];
@@ -441,14 +479,21 @@ async function textureAtlas(gltf, options) {
         });
 
         /* Done, cleanup! */
-        console.log(`Total indices: ${totalIndicesCount}`);
-        console.log(`Total vertices: ${totalCount}`);
+        console.log(`   > Total indices: ${totalIndicesCount}`);
+        console.log(`   > Total vertices: ${totalCount}`);
     }
+
+    console.log('Removing unused items...');
 
     removeUnusedNodes(gltf);
     removeUnusedMeshes(gltf);
     removeUnusedMaterials(gltf);
     removeUnusedElements(gltf);
 
+    console.log('Done.');
+
     return gltf;
+    } catch (e) {
+        console.error(e);
+    }
 }
