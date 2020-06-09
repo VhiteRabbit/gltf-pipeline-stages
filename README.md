@@ -37,14 +37,21 @@ fsExtra.readJson('input.gltf')
 | Stage    | Description | Optimizes |
 |----------|-------------|-----------|
 | toPaletteMesh | Palette mesh optimization for static scenes with colored meshes. Joins all meshes with opaque materials and generates a palette texture that contains all colors together with texture coordinates indexing into this texture. (See [this blog post](https://blog.constructarca.de/palette-mesh-optimization) for more information)| Draw calls |
+| textureAtlas | Texture atlas optimization for static scenes with textured meshes. Joins all meshes in a specified group generates a atlas texture that contains all textures packed together. | Draw calls |
+
+### textureAtlas
+
+Options:
+ - **atlases** `Object`: object where key specifies a group name and the value is an array of object name strings that represent the objects to merge for this batch.
+ - **format** `string`: image format to write the texture atlases as
 
 ## License
 
 Vhite Rabbit's custom pipeline stages are released under MIT license:
 
 ```
-Copyright © 2019 Vhite Rabbit <contact@vhiterabbit.com>
-Copyright © 2019 Jonathan Hale <squareys@googlemail.com>
+Copyright © 2019, 2020 Vhite Rabbit <contact@vhiterabbit.com>
+Copyright © 2019, 2020 Jonathan Hale <squareys@googlemail.com>
 
 Permission is hereby granted, free of charge, to any person obtaining a
 copy of this software and associated documentation files (the "Software"),
