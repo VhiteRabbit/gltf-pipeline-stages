@@ -16,7 +16,7 @@ const vec3 = require('gl-matrix').vec3;
 
 module.exports = textureAtlas;
 
-async function packImages(gltf, name, images, options) {
+async function packImages(gltf, name, images, options, hasAlpha) {
     let rects = [];
     let atlasImages = [];
     for(const imgIndex of images) {
@@ -76,7 +76,7 @@ async function packImages(gltf, name, images, options) {
     let img = await atlasImage
         .composite(atlasImages);
 
-    if(options.format == 'png') {
+    if(options.format == 'png' || hasAlpha) {
         img = await img.png({quality: 90}).toBuffer();
     } else if(options.format == 'jpeg') {
         img = await img.jpeg({quality: 90}).toBuffer();
@@ -272,7 +272,8 @@ async function textureAtlas(gltf, options) {
             return;
         }
         atlasIndexByName[a] = index;
-        atlases.push({name: a, buffers: [], images: []});
+        atlases.push({name: a, buffers: [], images: [], alphaMode: 'OPAQUE'});
+        atlases.push({name: a + '-alpha', buffers: [], images: [], alphaMode: 'BLEND'});
         ++index;
     }
 
@@ -286,7 +287,7 @@ async function textureAtlas(gltf, options) {
         }
 
         if(!atlasName) return;
-        const atlasIndex = atlasIndexByName[atlasName];
+        const baseAtlasIndex = atlasIndexByName[atlasName];
 
         if(node.mesh != undefined) {
             let mesh = gltf.meshes[node['mesh']];
@@ -296,6 +297,10 @@ async function textureAtlas(gltf, options) {
                 if(!mat.pbrMetallicRoughness) {
                     console.log(`${node.name} => no pbrMetallicRoughness material`);
                     return;
+                }
+                let atlasIndex = baseAtlasIndex;
+                if(mat.alphaMode == 'BLEND') {
+                    atlasIndex += 1;
                 }
 
                 if(!('baseColorTexture' in mat.pbrMetallicRoughness)) {
@@ -311,6 +316,7 @@ async function textureAtlas(gltf, options) {
                 var transform = getWorldTransform(gltf, nodeId);
 
                 const bufferIndex = atlases[atlasIndex].buffers.length;
+                console.log(mat.alphaMode)
                 atlases[atlasIndex].buffers.push({
                     indices: primitive.indices,
                     normals: primitive.attributes.NORMAL,
@@ -359,7 +365,8 @@ async function textureAtlas(gltf, options) {
         }
 
         console.log("   > packing", atlas.images.length, "images");
-        Object.assign(atlas, await packImages(gltf, atlas.name, atlas.images, options))
+        const hasAlpha = (atlas.alphaMode == 'BLEND');
+        Object.assign(atlas, await packImages(gltf, atlas.name, atlas.images, options, hasAlpha))
         console.log("   > atlas size:", atlas.size);
 
         console.log("   > joining meshes");
@@ -438,16 +445,22 @@ async function textureAtlas(gltf, options) {
         if(gltf.textures == undefined) gltf.textures = [];
         if(gltf.images == undefined) gltf.images = [];
 
-        gltf.materials.push({
+        let mat = {
             name: 'atlas-' + atlas.name,
             pbrMetallicRoughness: {
                 baseColorTexture: {
                     index: gltf.textures.length,
                 },
+                baseColorFactor: [1.0, 1.0, 1.0, 1.0],
                 metallicFactor: 0,
                 roughnessFactor: 0.5
             }
-        });
+        };
+        if(atlas.alphaMode == 'BLEND') {
+            mat.alphaMode = atlas.alphaMode;
+            mat.doubleSided = true;
+        }
+        gltf.materials.push(mat);
         gltf.textures.push({source: gltf.images.length, sampler: gltf.samplers.length});
         gltf.samplers.push({minFilter: 9728, magFilter: 9728});
         gltf.images.push({name: atlas.name, extras: {_pipeline: {source: atlas.image}}});
@@ -489,6 +502,16 @@ async function textureAtlas(gltf, options) {
     removeUnusedMeshes(gltf);
     removeUnusedMaterials(gltf);
     removeUnusedElements(gltf);
+
+        /*
+    for(let mat of gltf.materials) {
+        if(!("extensions" in mat)) {
+            mat.extensions = {}
+        }
+
+        mat.extensions["KHR_materials_unlit"] = {}
+    }
+    */
 
     console.log('Done.');
 
