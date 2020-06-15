@@ -273,6 +273,7 @@ async function textureAtlas(gltf, options) {
         }
         atlasIndexByName[a] = index;
         atlases.push({name: a, buffers: [], images: [], alphaMode: 'OPAQUE'});
+        ++index;
         atlases.push({name: a + '-alpha', buffers: [], images: [], alphaMode: 'BLEND'});
         ++index;
     }
@@ -453,16 +454,16 @@ async function textureAtlas(gltf, options) {
                 },
                 baseColorFactor: [1.0, 1.0, 1.0, 1.0],
                 metallicFactor: 0,
-                roughnessFactor: 0.5
+                roughnessFactor: 1.0
             }
         };
         if(atlas.alphaMode == 'BLEND') {
-            mat.alphaMode = atlas.alphaMode;
+            mat.alphaMode = 'MASK';
             mat.doubleSided = true;
         }
         gltf.materials.push(mat);
         gltf.textures.push({source: gltf.images.length, sampler: gltf.samplers.length});
-        gltf.samplers.push({minFilter: 9728, magFilter: 9728});
+        gltf.samplers.push({minFilter: 9087, magFilter: 9729});
         gltf.images.push({name: atlas.name, extras: {_pipeline: {source: atlas.image}}});
 
         /* Merge buffers and add to gltf scene */
@@ -503,15 +504,17 @@ async function textureAtlas(gltf, options) {
     removeUnusedMaterials(gltf);
     removeUnusedElements(gltf);
 
-        /*
     for(let mat of gltf.materials) {
-        if(!("extensions" in mat)) {
-            mat.extensions = {}
-        }
+        //if(!("extensions" in mat)) {
+        //mat.extensions = {}
+        //}
 
-        mat.extensions["KHR_materials_unlit"] = {}
+        //mat.extensions["KHR_materials_unlit"] = {}
+        if(mat.alphaMode == 'BLEND') {
+            mat.alphaMode = 'MASK';
+            mat.doubleSided = true;
+        }
     }
-    */
 
     console.log('Done.');
 
